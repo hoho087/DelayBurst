@@ -2,6 +2,8 @@
 
 Windows 網路測試小工具（PySide6 + WinDivert），可對指定程式做上下行「擠壓回放 / 丟包」模擬。
 
+![image](https://github.com/hoho087/DelayBurst/blob/main/screenshot.png)
+
 ## 快速開始
 
 1. 安裝套件
