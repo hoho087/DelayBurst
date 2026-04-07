@@ -3,6 +3,7 @@ import csv
 import ctypes
 import io
 import json
+import os
 import random
 import subprocess
 import sys
@@ -19,6 +20,7 @@ import win32con
 
 try:
     from PySide6.QtCore import Qt, QTimer, Signal, QObject, QFileInfo
+    from PySide6.QtGui import QFont
     from PySide6.QtWidgets import (
         QAbstractItemView,
         QApplication,
@@ -356,17 +358,49 @@ def run_cmd(args):
     return r.returncode, r.stdout, r.stderr
 
 
-def run_powershell(script_text):
-    return run_cmd(
-        [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            script_text,
-        ]
-    )
+def normalize_exe_path(path_text):
+    raw = str(path_text or "").strip().strip('"')
+    if not raw:
+        return ""
+    try:
+        resolved = Path(raw).resolve(strict=False)
+        raw = str(resolved)
+    except Exception:
+        pass
+    return os.path.normcase(os.path.normpath(raw))
+
+
+def get_process_image_path_by_pid(pid):
+    try:
+        pid_i = int(pid)
+    except Exception:
+        return ""
+    if pid_i <= 0:
+        return ""
+
+    k32 = ctypes.windll.kernel32
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    PROCESS_QUERY_INFORMATION = 0x0400
+    handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid_i)
+    if not handle:
+        handle = k32.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid_i)
+    if not handle:
+        return ""
+
+    try:
+        size = ctypes.c_uint(32768)
+        buf = ctypes.create_unicode_buffer(size.value)
+        ok = k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size))
+        if not ok:
+            return ""
+        return str(buf.value[: size.value]).strip()
+    except Exception:
+        return ""
+    finally:
+        try:
+            k32.CloseHandle(handle)
+        except Exception:
+            pass
 
 
 def get_file_description(path_text):
@@ -384,45 +418,38 @@ def get_file_description(path_text):
 
 
 def list_running_processes():
-    script = (
-        "$ErrorActionPreference='SilentlyContinue';"
-        "Get-CimInstance Win32_Process | "
-        "Where-Object { $_.ExecutablePath -and (Test-Path $_.ExecutablePath) } | "
-        "Select-Object ProcessId, Name, ExecutablePath | ConvertTo-Json -Compress"
-    )
-    code, out, err = run_powershell(script)
+    code, out, err = run_cmd(["tasklist", "/FO", "CSV", "/NH"])
     if code != 0:
-        return [], err.strip() or "powershell command failed"
-    raw = out.strip()
-    if not raw:
-        return [], ""
-    try:
-        parsed = json.loads(raw)
-    except Exception as e:
-        return [], f"json parse error: {e}"
-
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        return [], "unexpected process list format"
+        return [], err.strip() or "tasklist command failed"
 
     rows = []
-    for item in parsed:
-        if not isinstance(item, dict):
+    desc_cache = {}
+    for item in csv.reader(io.StringIO(out)):
+        if len(item) < 2:
             continue
-        path_text = str(item.get("ExecutablePath") or "").strip()
+        proc_name = item[0].strip().strip('"')
+        pid_text = item[1].strip().strip('"').replace(",", "")
+        if not pid_text.isdigit():
+            continue
+        pid = int(pid_text)
+        if pid <= 0:
+            continue
+
+        path_text = get_process_image_path_by_pid(pid)
         if not path_text:
             continue
-        p = Path(path_text)
-        if not p.exists() or p.suffix.lower() != ".exe":
+        p = Path(path_text.strip())
+        if p.suffix.lower() != ".exe":
             continue
-        pid_raw = item.get("ProcessId")
-        try:
-            pid = int(pid_raw)
-        except Exception:
-            continue
-        proc_name = str(item.get("Name") or p.name).strip()
-        app_name = get_file_description(str(p))
+
+        path_key = normalize_exe_path(path_text)
+        app_name = desc_cache.get(path_key)
+        if app_name is None:
+            app_name = get_file_description(str(p))
+            if not app_name:
+                app_name = p.stem
+            desc_cache[path_key] = app_name
+
         if not app_name:
             app_name = p.stem
         rows.append(
@@ -430,7 +457,7 @@ def list_running_processes():
                 "pid": pid,
                 "process_name": proc_name,
                 "app_name": app_name,
-                "path": str(p.resolve()),
+                "path": str(Path(path_text)),
             }
         )
     rows.sort(key=lambda x: (x["app_name"].lower(), x["pid"]))
@@ -467,7 +494,17 @@ def resolve_windivert_dll_path():
 def safe_beep(freq, duration_ms, fallback):
     try:
         winsound.Beep(max(37, int(freq)), max(10, int(duration_ms)))
+        return
     except RuntimeError:
+        pass
+    except Exception:
+        pass
+    try:
+        winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS | winsound.SND_ASYNC)
+        return
+    except Exception:
+        pass
+    try:
         winsound.MessageBeep(fallback)
     except Exception:
         pass
@@ -493,6 +530,8 @@ def parse_port(local_endpoint):
 
 def get_target_pids(exe_path):
     image_name = Path(exe_path).name
+    if not image_name:
+        return set(), "empty target image name"
     code, out, err = run_cmd(["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"])
     if code != 0:
         return set(), err.strip()
@@ -516,71 +555,110 @@ def get_target_pid_exact(exe_path, target_pid):
     if pid <= 0:
         return set(), ""
 
-    code, out, err = run_cmd(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"])
-    if code != 0:
-        return set(), err.strip()
-    image_name = Path(exe_path).name.lower()
-    for row in csv.reader(io.StringIO(out)):
-        if len(row) < 2:
-            continue
-        proc_name = row[0].strip().strip('"').lower()
-        pid_text = row[1].strip().strip('"').replace(",", "")
-        if not pid_text.isdigit() or int(pid_text) != pid:
-            continue
-        if image_name and proc_name != image_name:
-            return set(), ""
+    live_path = get_process_image_path_by_pid(pid)
+    if not live_path:
+        return set(), ""
+    image_name = Path(exe_path).name.lower().strip()
+    if image_name and Path(live_path).name.lower().strip() != image_name:
+        return set(), ""
+    return {pid}, ""
+
+
+def get_target_pid_by_path(exe_path, target_pid):
+    try:
+        pid = int(target_pid)
+    except Exception:
+        return set(), ""
+    if pid <= 0:
+        return set(), ""
+
+    target_path = normalize_exe_path(exe_path)
+    if not target_path:
+        return set(), ""
+
+    live_path = normalize_exe_path(get_process_image_path_by_pid(pid))
+    if not live_path:
+        return set(), ""
+
+    if live_path == target_path:
         return {pid}, ""
     return set(), ""
 
 
 def get_target_pids_by_path(exe_path):
-    rows, err = list_running_processes()
+    target_path = normalize_exe_path(exe_path)
+    if not target_path:
+        return set(), "invalid target path"
+
+    by_name_pids, err = get_target_pids(exe_path)
     if err:
         return set(), err
-    try:
-        target = str(Path(exe_path).resolve()).lower()
-    except Exception:
-        target = str(exe_path).strip().lower()
-    pids = {int(r["pid"]) for r in rows if str(r.get("path", "")).strip().lower() == target}
+    if not by_name_pids:
+        return set(), ""
+
+    unreadable = 0
+    pids = set()
+    for pid in by_name_pids:
+        path_text = get_process_image_path_by_pid(pid)
+        if not path_text:
+            unreadable += 1
+            continue
+        if normalize_exe_path(path_text) == target_path:
+            pids.add(pid)
+
+    if not pids and unreadable:
+        return set(), f"path query unavailable for {unreadable}/{len(by_name_pids)} pid(s)"
     return pids, ""
 
 
 def collect_ports_for_pids(target_pids):
     tcp, udp = set(), set()
-    for proto in ("tcp", "udp"):
-        code, out, _ = run_cmd(["netstat", "-ano", "-p", proto])
-        if code != 0:
+    if not target_pids:
+        return tcp, udp
+    code, out, _ = run_cmd(["netstat", "-ano"])
+    if code != 0:
+        return tcp, udp
+
+    for raw in out.splitlines():
+        line = raw.strip()
+        if not line:
             continue
-        for raw in out.splitlines():
-            line = raw.strip()
-            if not line:
-                continue
-            parts = line.split()
-            if not parts:
-                continue
-            h = parts[0].upper()
-            if h == "TCP" and proto == "tcp" and len(parts) >= 5:
-                local_ep, pid_text = parts[1], parts[-1]
-            elif h == "UDP" and proto == "udp" and len(parts) >= 4:
-                local_ep, pid_text = parts[1], parts[-1]
-            else:
-                continue
-            if not pid_text.isdigit() or int(pid_text) not in target_pids:
-                continue
-            p = parse_port(local_ep)
-            if p is None:
-                continue
-            (tcp if proto == "tcp" else udp).add(p)
+        parts = line.split()
+        if not parts:
+            continue
+
+        h = parts[0].upper()
+        if h == "TCP" and len(parts) >= 5:
+            local_ep, pid_text, proto = parts[1], parts[-1], "tcp"
+        elif h == "UDP" and len(parts) >= 4:
+            local_ep, pid_text, proto = parts[1], parts[-1], "udp"
+        else:
+            continue
+
+        if not pid_text.isdigit() or int(pid_text) not in target_pids:
+            continue
+        p = parse_port(local_ep)
+        if p is None:
+            continue
+        (tcp if proto == "tcp" else udp).add(p)
     return tcp, udp
 
 
+def select_ports_for_filter(ports, max_ports):
+    # Prefer high ephemeral ports first to better target active client connections.
+    ordered = sorted({int(p) for p in ports if 0 <= int(p) <= 65535}, reverse=True)
+    return ordered[:max_ports]
+
+
 def build_filter(direction_kw, tcp_ports, udp_ports, max_ports):
+    sel_tcp = select_ports_for_filter(tcp_ports, max_ports)
+    sel_udp = select_ports_for_filter(udp_ports, max_ports)
     terms = []
-    for p in sorted(tcp_ports)[:max_ports]:
+    for p in sel_tcp:
         terms.append(f"({direction_kw} and not impostor and tcp and localPort == {p})")
-    for p in sorted(udp_ports)[:max_ports]:
+    for p in sel_udp:
         terms.append(f"({direction_kw} and not impostor and udp and localPort == {p})")
-    return " or ".join(terms)
+    return " or ".join(terms), sel_tcp, sel_udp
 
 
 def fmt_ports(ports):
@@ -1178,16 +1256,28 @@ class TrafficEngine(QObject):
         return hi
 
     def _start_effect(self):
+        t0 = time.perf_counter()
         cfg = self.get_config_copy()
 
         if not is_admin():
             self.log_signal.emit("[ERROR] 請用系統管理員身分執行")
             return
 
-        target = Path(cfg.target_exe)
-        if not target.exists():
-            self.log_signal.emit(f"[ERROR] 找不到目標程式: {target}")
-            return
+        target_raw = str(cfg.target_exe or "").strip()
+        target = Path(target_raw) if target_raw else Path("")
+        if cfg.target_match_mode == "pid":
+            if int(cfg.target_pid) <= 0:
+                self.log_signal.emit("[ERROR] PID 模式需要先選擇目標進程")
+                return
+            if target_raw and not target.exists():
+                self.log_signal.emit(f"[WARN] 目標路徑不存在，將僅用 PID 比對: {target}")
+        else:
+            if not target_raw:
+                self.log_signal.emit("[ERROR] 尚未設定目標程式")
+                return
+            if not target.exists():
+                self.log_signal.emit(f"[ERROR] 找不到目標程式: {target}")
+                return
 
         with self._lock:
             if self._effect_active:
@@ -1200,20 +1290,46 @@ class TrafficEngine(QObject):
         if windivert is None:
             return
 
+        t_pid0 = time.perf_counter()
+        pids = set()
+        err_text = ""
         if cfg.target_match_mode == "pid":
-            pids, err_text = get_target_pid_exact(str(target), cfg.target_pid)
+            pids, err_text = get_target_pid_exact(target_raw, cfg.target_pid)
         else:
-            pids, err_text = get_target_pids_by_path(str(target))
+            if cfg.target_pid > 0:
+                fast_pids, _ = get_target_pid_by_path(target_raw, cfg.target_pid)
+                if fast_pids:
+                    pids = fast_pids
+            if not pids:
+                pids, err_text = get_target_pids_by_path(target_raw)
+            if not pids and cfg.target_pid > 0:
+                fallback_pids, _ = get_target_pid_exact(target_raw, cfg.target_pid)
+                if fallback_pids:
+                    pids = fallback_pids
+                    self.log_signal.emit("[WARN] 同路徑比對未命中，已回退到已選 PID")
+            if not pids:
+                same_name_pids, same_name_err = get_target_pids(target_raw)
+                if same_name_err and not err_text:
+                    err_text = same_name_err
+                if len(same_name_pids) == 1:
+                    pids = same_name_pids
+                    self.log_signal.emit("[WARN] 同路徑比對失敗，已回退到唯一同檔名進程")
+                elif len(same_name_pids) > 1:
+                    self.log_signal.emit("[WARN] 偵測到多個同檔名進程，已取消同檔名回退以避免誤攔截")
+        t_pid_ms = (time.perf_counter() - t_pid0) * 1000.0
         if err_text:
-            self.log_signal.emit(f"[WARN] tasklist 失敗: {err_text}")
+            self.log_signal.emit(f"[WARN] 目標進程查找異常: {err_text}")
         if not pids:
             self.log_signal.emit("[WARN] 找不到目標進程，無法啟用效果")
             return
 
+        t_port0 = time.perf_counter()
         tcp_ports, udp_ports = collect_ports_for_pids(pids)
+        t_port_ms = (time.perf_counter() - t_port0) * 1000.0
         if not tcp_ports and not udp_ports:
             self.log_signal.emit("[WARN] 目標進程目前沒有可用的本機埠")
             return
+        self.log_signal.emit(f"[PERF] PID查找 {t_pid_ms:.0f} ms | 埠收集 {t_port_ms:.0f} ms")
 
         directions = [
             ("outbound", "上行", "outbound", cfg.outbound),
@@ -1225,10 +1341,17 @@ class TrafficEngine(QObject):
             if not dcfg.enabled:
                 continue
 
-            filt = build_filter(kw, tcp_ports, udp_ports, max(1, int(cfg.max_filter_ports)))
+            filt, sel_tcp, sel_udp = build_filter(kw, tcp_ports, udp_ports, max(1, int(cfg.max_filter_ports)))
             if not filt:
                 self.log_signal.emit(f"[WARN][{label}] 無可用過濾條件")
                 continue
+
+            if len(sel_tcp) < len(tcp_ports) or len(sel_udp) < len(udp_ports):
+                self.log_signal.emit(
+                    f"[WARN][{label}] 埠數過多，已截斷過濾條件: "
+                    f"TCP {len(sel_tcp)}/{len(tcp_ports)}, UDP {len(sel_udp)}/{len(udp_ports)} "
+                    f"(可調整最大過濾埠數)"
+                )
 
             handle, err = windivert.open(filt)
             if not handle:
@@ -1243,7 +1366,8 @@ class TrafficEngine(QObject):
             hold_ms = self._choose_hold_ms(dcfg)
             mode_text = "擠壓" if dcfg.mode == "squeeze" else f"丟包({clamp_pct(dcfg.drop_rate_pct):g}%)"
             self.log_signal.emit(
-                f"[READY][{label}] 模式={mode_text} | 本次扣押={hold_ms:g}ms | TCP={fmt_ports(tcp_ports)} UDP={fmt_ports(udp_ports)}"
+                f"[READY][{label}] 模式={mode_text} | 本次扣押={hold_ms:g}ms | "
+                f"TCP={fmt_ports(sel_tcp)} UDP={fmt_ports(sel_udp)}"
             )
 
             sessions[dir_id] = DirectionSession(
@@ -1275,10 +1399,17 @@ class TrafficEngine(QObject):
         for s in sessions.values():
             s.start()
 
+        threading.Thread(
+            target=safe_beep,
+            args=(cfg.beep_frequency, cfg.beep_duration_ms, winsound.MB_ICONEXCLAMATION),
+            daemon=True,
+        ).start()
+
         self.effect_signal.emit(True)
         self.busy_signal.emit(True)
         self.status_signal.emit("效果啟用中")
-        self.log_signal.emit("[HOLD] 效果已啟用，首次成功扣押後才播放提示音")
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        self.log_signal.emit(f"[HOLD] 效果已啟用 | 初始化耗時 {elapsed_ms:.0f} ms")
 
     def _end_effect(self, reason):
         with self._lock:
@@ -1294,21 +1425,8 @@ class TrafficEngine(QObject):
         self.status_signal.emit("回放/收尾中")
 
     def _on_first_capture(self, direction_id):
-        cfg = self.get_config_copy()
-        should_beep = False
-        with self._lock:
-            if not self._disconnect_beeped:
-                self._disconnect_beeped = True
-                should_beep = True
-
-        if should_beep:
-            threading.Thread(
-                target=safe_beep,
-                args=(cfg.beep_frequency, cfg.beep_duration_ms, winsound.MB_ICONEXCLAMATION),
-                daemon=True,
-            ).start()
-            label = "上行" if direction_id == "outbound" else "下行"
-            self.log_signal.emit(f"[CAPTURE] 已確認攔截 {label} 封包")
+        label = "上行" if direction_id == "outbound" else "下行"
+        self.log_signal.emit(f"[CAPTURE] 已確認攔截 {label} 封包")
 
     def _on_session_finished(self, direction_id, stats):
         label = "上行" if direction_id == "outbound" else "下行"
@@ -1870,7 +1988,7 @@ class MainWindow(QMainWindow):
     def _apply_style(self):
         self.setStyleSheet(
             """
-            * { font-family: "Segoe UI", "Microsoft JhengHei"; font-size: 12px; color: #d5dae0; }
+            * { font-family: "Segoe UI", "Microsoft JhengHei"; color: #d5dae0; }
             QFrame#RootFrame {
                 background: #0f1115;
                 border: 1px solid #232933;
@@ -2314,6 +2432,9 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    font = QFont("Segoe UI")
+    font.setPointSize(10)
+    app.setFont(font)
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
