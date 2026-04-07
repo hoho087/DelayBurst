@@ -18,15 +18,20 @@ import win32api
 import win32con
 
 try:
-    from PySide6.QtCore import Qt, QTimer, Signal, QObject
+    from PySide6.QtCore import Qt, QTimer, Signal, QObject, QFileInfo
     from PySide6.QtWidgets import (
+        QAbstractItemView,
         QApplication,
         QCheckBox,
         QComboBox,
+        QDialog,
+        QDialogButtonBox,
         QDoubleSpinBox,
         QFileDialog,
+        QFileIconProvider,
         QFormLayout,
         QFrame,
+        QHeaderView,
         QGridLayout,
         QGroupBox,
         QHBoxLayout,
@@ -34,7 +39,10 @@ try:
         QLineEdit,
         QMainWindow,
         QPushButton,
+        QSizePolicy,
         QSpinBox,
+        QTableWidget,
+        QTableWidgetItem,
         QTextEdit,
         QVBoxLayout,
         QWidget,
@@ -46,6 +54,182 @@ except Exception:
 
 DEFAULT_TRIGGER_VK = win32con.VK_XBUTTON2
 HOTKEY_SCAN_VKS = list(range(1, 255))
+
+I18N = {
+    "zh": {
+        "language_toggle_btn": "英文",
+        "base_settings": "基本設定",
+        "target_program": "目標程式",
+        "target_placeholder": "選擇目標程式 .exe",
+        "select_target": "選擇目標",
+        "select_process": "選擇進程",
+        "hotkey": "觸發熱鍵",
+        "bind_hotkey": "綁定熱鍵",
+        "capture_hotkey": "請按下一個按鍵...",
+        "hotkey_mode": "熱鍵模式",
+        "hotkey_mode_toggle": "切換",
+        "hotkey_mode_hold": "按住",
+        "left_click_restore": "效果期間左鍵立即結束",
+        "advanced_settings": "進階設定",
+        "max_filter_ports": "最大過濾埠數",
+        "max_packet_size": "最大封包大小",
+        "beep_freq": "啟用提示音頻率",
+        "beep_dur": "啟用提示音長度",
+        "restore_beep_freq": "恢復提示音頻率",
+        "restore_beep_dur": "恢復提示音長度",
+        "status_group": "狀態",
+        "status_label": "系統狀態",
+        "status_idle": "待命",
+        "status_effect_on": "效果啟用中",
+        "status_draining": "回放/收尾中",
+        "effect_label": "效果啟用",
+        "busy_label": "背景忙碌",
+        "admin_label": "管理員模式",
+        "contact_label": "作者聯繫",
+        "contact_html": 'Discord: <a href="https://discord.gg/mdFDmCsd">discord.gg/mdFDmCsd</a> | ID: _forc4_',
+        "ops_group": "操作",
+        "toggle_effect": "切換效果",
+        "end_effect": "結束效果",
+        "save_config": "保存設定",
+        "load_config": "載入設定",
+        "outbound_settings": "上行設定",
+        "inbound_settings": "下行設定",
+        "log_group": "執行紀錄",
+        "enabled": "啟用",
+        "mode": "模式",
+        "mode_squeeze": "擠壓回放",
+        "mode_drop": "丟包模式",
+        "rand_hold_min": "隨機扣押最小",
+        "rand_hold_max": "隨機扣押最大",
+        "jitter_min": "抖動最小(ms)",
+        "jitter_max": "抖動最大(ms)",
+        "rand_bw_min": "隨機帶寬最小",
+        "rand_bw_max": "隨機帶寬最大",
+        "bw_resample": "重抽週期(ms)",
+        "replay_loss": "回放丟包率(%)",
+        "drop_rate": "丟包模式丟包率",
+        "yes": "是",
+        "no": "否",
+        "dialog_select_target": "選擇目標程式",
+        "dialog_select_process": "選擇運行中的進程",
+        "process_refresh": "重新整理",
+        "process_target_mode": "套用範圍",
+        "process_scope_pid": "僅此進程(PID)",
+        "process_scope_image": "同路徑程式",
+        "process_col_app": "程式名稱",
+        "process_col_process": "進程",
+        "process_col_pid": "PID",
+        "process_col_path": "路徑",
+        "process_count": "目前可選進程數: {n}",
+        "process_list_error": "進程清單讀取失敗: {err}",
+        "dialog_save_cfg": "保存設定檔",
+        "dialog_load_cfg": "載入設定檔",
+        "log_target_set": "[CFG] 目標程式: {path}",
+        "log_target_set_from_process": "[CFG] 已從進程選擇目標: {app} (PID {pid}) -> {path}",
+        "log_capture_cancel": "[CFG] 已取消熱鍵綁定",
+        "log_capture_start": "[CFG] 熱鍵綁定中，請按下一個按鍵",
+        "log_capture_timeout": "[WARN] 熱鍵綁定逾時",
+        "log_hotkey_bound": "[CFG] 已綁定熱鍵: {name}",
+        "log_cfg_save_fail": "[ERROR] 保存設定失敗: {err}",
+        "log_cfg_saved": "[CFG] 設定已保存: {path}",
+        "log_cfg_load_fail": "[ERROR] 載入設定失敗: {err}",
+        "log_cfg_loaded": "[CFG] 已載入設定: {path}",
+        "log_local_cfg_load_fail": "[WARN] 本地設定讀取失敗: {err}",
+        "log_local_cfg_loaded": "[CFG] 已套用本地設定: {path}",
+        "log_local_cfg_save_fail": "[WARN] 本地設定保存失敗: {err}",
+    },
+    "en": {
+        "language_toggle_btn": "中文",
+        "base_settings": "Basic Settings",
+        "target_program": "Target Program",
+        "target_placeholder": "Select target .exe",
+        "select_target": "Select Target",
+        "select_process": "Select Process",
+        "hotkey": "Hotkey",
+        "bind_hotkey": "Bind Hotkey",
+        "capture_hotkey": "Press the next key...",
+        "hotkey_mode": "Hotkey Mode",
+        "hotkey_mode_toggle": "Toggle",
+        "hotkey_mode_hold": "Hold",
+        "left_click_restore": "Left click to stop effect",
+        "advanced_settings": "Advanced Settings",
+        "max_filter_ports": "Max Ports",
+        "max_packet_size": "Max Packet",
+        "beep_freq": "Start Beep Freq",
+        "beep_dur": "Start Beep Dur",
+        "restore_beep_freq": "Restore Beep Freq",
+        "restore_beep_dur": "Restore Beep Dur",
+        "status_group": "Status",
+        "status_label": "System",
+        "status_idle": "Idle",
+        "status_effect_on": "Effect Active",
+        "status_draining": "Replaying / Draining",
+        "effect_label": "Effect",
+        "busy_label": "Busy",
+        "admin_label": "Admin Mode",
+        "contact_label": "Contact",
+        "contact_html": 'Discord: <a href="https://discord.gg/mdFDmCsd">Add</a> | ID: _forc4_',
+        "ops_group": "Actions",
+        "toggle_effect": "Toggle",
+        "end_effect": "End",
+        "save_config": "Save",
+        "load_config": "Load",
+        "outbound_settings": "Outbound Settings",
+        "inbound_settings": "Inbound Settings",
+        "log_group": "Runtime Log",
+        "enabled": "Enabled",
+        "mode": "Mode",
+        "mode_squeeze": "Squeeze Replay",
+        "mode_drop": "Drop Mode",
+        "rand_hold_min": "Min Hold",
+        "rand_hold_max": "Max Hold",
+        "jitter_min": "Min Jitter (ms)",
+        "jitter_max": "Max Jitter (ms)",
+        "rand_bw_min": "Min Bandwidth",
+        "rand_bw_max": "Max Bandwidth",
+        "bw_resample": "Resample (ms)",
+        "replay_loss": "Replay Loss (%)",
+        "drop_rate": "Drop Rate",
+        "yes": "Yes",
+        "no": "No",
+        "dialog_select_target": "Select Target Program",
+        "dialog_select_process": "Select Running Process",
+        "process_refresh": "Refresh",
+        "process_target_mode": "Apply To",
+        "process_scope_pid": "Only this process (PID)",
+        "process_scope_image": "Same executable path",
+        "process_col_app": "App Name",
+        "process_col_process": "Process",
+        "process_col_pid": "PID",
+        "process_col_path": "Path",
+        "process_count": "Selectable processes: {n}",
+        "process_list_error": "Failed to query process list: {err}",
+        "dialog_save_cfg": "Save Configuration",
+        "dialog_load_cfg": "Load Configuration",
+        "log_target_set": "[CFG] Target program: {path}",
+        "log_target_set_from_process": "[CFG] Target selected from process: {app} (PID {pid}) -> {path}",
+        "log_capture_cancel": "[CFG] Hotkey binding cancelled",
+        "log_capture_start": "[CFG] Waiting for next key to bind hotkey",
+        "log_capture_timeout": "[WARN] Hotkey binding timed out",
+        "log_hotkey_bound": "[CFG] Hotkey bound: {name}",
+        "log_cfg_save_fail": "[ERROR] Failed to save config: {err}",
+        "log_cfg_saved": "[CFG] Config saved: {path}",
+        "log_cfg_load_fail": "[ERROR] Failed to load config: {err}",
+        "log_cfg_loaded": "[CFG] Config loaded: {path}",
+        "log_local_cfg_load_fail": "[WARN] Failed to load local config: {err}",
+        "log_local_cfg_loaded": "[CFG] Local config applied: {path}",
+        "log_local_cfg_save_fail": "[WARN] Failed to save local config: {err}",
+    },
+}
+
+STATUS_KEY_MAP = {
+    "待命": "status_idle",
+    "效果啟用中": "status_effect_on",
+    "回放/收尾中": "status_draining",
+    "Idle": "status_idle",
+    "Effect Active": "status_effect_on",
+    "Replaying / Draining": "status_draining",
+}
 
 
 @dataclass
@@ -66,6 +250,8 @@ class DirectionConfig:
 @dataclass
 class AppConfig:
     target_exe: str = ""
+    target_match_mode: str = "path"  # path/pid
+    target_pid: int = 0
     windivert_dll: str = "WinDivert.dll"
     trigger_vk: int = DEFAULT_TRIGGER_VK
     trigger_mode: str = "toggle"  # toggle/hold
@@ -99,6 +285,12 @@ class AppConfig:
                 return d
 
         cfg.target_exe = str(data.get("target_exe", cfg.target_exe))
+        cfg.target_match_mode = str(data.get("target_match_mode", cfg.target_match_mode)).lower()
+        if cfg.target_match_mode == "image":
+            cfg.target_match_mode = "path"
+        if cfg.target_match_mode not in {"path", "pid"}:
+            cfg.target_match_mode = "path"
+        cfg.target_pid = max(0, gi("target_pid", cfg.target_pid))
         cfg.windivert_dll = str(data.get("windivert_dll", cfg.windivert_dll))
         cfg.trigger_vk = gi("trigger_vk", cfg.trigger_vk)
         cfg.trigger_mode = str(data.get("trigger_mode", cfg.trigger_mode)).lower()
@@ -162,6 +354,87 @@ def kbps_to_bps(kbps):
 def run_cmd(args):
     r = subprocess.run(args, capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return r.returncode, r.stdout, r.stderr
+
+
+def run_powershell(script_text):
+    return run_cmd(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script_text,
+        ]
+    )
+
+
+def get_file_description(path_text):
+    try:
+        trans = win32api.GetFileVersionInfo(path_text, r"\VarFileInfo\Translation")
+        if trans:
+            lang, codepage = trans[0]
+            key = f"\\StringFileInfo\\{lang:04X}{codepage:04X}\\FileDescription"
+            desc = win32api.GetFileVersionInfo(path_text, key)
+            if desc:
+                return str(desc).strip()
+    except Exception:
+        pass
+    return ""
+
+
+def list_running_processes():
+    script = (
+        "$ErrorActionPreference='SilentlyContinue';"
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { $_.ExecutablePath -and (Test-Path $_.ExecutablePath) } | "
+        "Select-Object ProcessId, Name, ExecutablePath | ConvertTo-Json -Compress"
+    )
+    code, out, err = run_powershell(script)
+    if code != 0:
+        return [], err.strip() or "powershell command failed"
+    raw = out.strip()
+    if not raw:
+        return [], ""
+    try:
+        parsed = json.loads(raw)
+    except Exception as e:
+        return [], f"json parse error: {e}"
+
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return [], "unexpected process list format"
+
+    rows = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        path_text = str(item.get("ExecutablePath") or "").strip()
+        if not path_text:
+            continue
+        p = Path(path_text)
+        if not p.exists() or p.suffix.lower() != ".exe":
+            continue
+        pid_raw = item.get("ProcessId")
+        try:
+            pid = int(pid_raw)
+        except Exception:
+            continue
+        proc_name = str(item.get("Name") or p.name).strip()
+        app_name = get_file_description(str(p))
+        if not app_name:
+            app_name = p.stem
+        rows.append(
+            {
+                "pid": pid,
+                "process_name": proc_name,
+                "app_name": app_name,
+                "path": str(p.resolve()),
+            }
+        )
+    rows.sort(key=lambda x: (x["app_name"].lower(), x["pid"]))
+    return rows, ""
 
 
 def is_admin():
@@ -232,6 +505,43 @@ def get_target_pids(exe_path):
         pid_text = row[1].strip().strip('"').replace(",", "")
         if pid_text.isdigit():
             pids.add(int(pid_text))
+    return pids, ""
+
+
+def get_target_pid_exact(exe_path, target_pid):
+    try:
+        pid = int(target_pid)
+    except Exception:
+        return set(), ""
+    if pid <= 0:
+        return set(), ""
+
+    code, out, err = run_cmd(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"])
+    if code != 0:
+        return set(), err.strip()
+    image_name = Path(exe_path).name.lower()
+    for row in csv.reader(io.StringIO(out)):
+        if len(row) < 2:
+            continue
+        proc_name = row[0].strip().strip('"').lower()
+        pid_text = row[1].strip().strip('"').replace(",", "")
+        if not pid_text.isdigit() or int(pid_text) != pid:
+            continue
+        if image_name and proc_name != image_name:
+            return set(), ""
+        return {pid}, ""
+    return set(), ""
+
+
+def get_target_pids_by_path(exe_path):
+    rows, err = list_running_processes()
+    if err:
+        return set(), err
+    try:
+        target = str(Path(exe_path).resolve()).lower()
+    except Exception:
+        target = str(exe_path).strip().lower()
+    pids = {int(r["pid"]) for r in rows if str(r.get("path", "")).strip().lower() == target}
     return pids, ""
 
 
@@ -890,7 +1200,10 @@ class TrafficEngine(QObject):
         if windivert is None:
             return
 
-        pids, err_text = get_target_pids(str(target))
+        if cfg.target_match_mode == "pid":
+            pids, err_text = get_target_pid_exact(str(target), cfg.target_pid)
+        else:
+            pids, err_text = get_target_pids_by_path(str(target))
         if err_text:
             self.log_signal.emit(f"[WARN] tasklist 失敗: {err_text}")
         if not pids:
@@ -1032,10 +1345,114 @@ def make_dspin(min_v, max_v, step, dec=1):
     return s
 
 
+class ProcessPickerDialog(QDialog):
+    def __init__(self, parent, tr_fn):
+        super().__init__(parent)
+        self._tr = tr_fn
+        self._entries = []
+        self._icon_provider = QFileIconProvider()
+
+        self.setWindowTitle(self._tr("dialog_select_process"))
+        self.resize(920, 560)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        self.info_label = QLabel("")
+        self.info_label.setObjectName("HintLabel")
+        layout.addWidget(self.info_label)
+
+        self.table = QTableWidget(0, 5)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.setColumnWidth(0, 30)
+        self.table.itemDoubleClicked.connect(lambda *_: self.accept())
+        layout.addWidget(self.table, 1)
+
+        footer = QHBoxLayout()
+        self.btn_refresh = QPushButton(self._tr("process_refresh"))
+        self.btn_refresh.clicked.connect(self.refresh_list)
+        footer.addWidget(self.btn_refresh)
+        footer.addStretch(1)
+        self.scope_label = QLabel(self._tr("process_target_mode"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItem(self._tr("process_scope_pid"), "pid")
+        self.scope_combo.addItem(self._tr("process_scope_image"), "path")
+        footer.addWidget(self.scope_label)
+        footer.addWidget(self.scope_combo)
+        self.box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.box.accepted.connect(self.accept)
+        self.box.rejected.connect(self.reject)
+        footer.addWidget(self.box)
+        layout.addLayout(footer)
+
+        self._apply_headers()
+        self.refresh_list()
+
+    def _apply_headers(self):
+        self.table.setHorizontalHeaderLabels(
+            [
+                "",
+                self._tr("process_col_app"),
+                self._tr("process_col_process"),
+                self._tr("process_col_pid"),
+                self._tr("process_col_path"),
+            ]
+        )
+
+    def refresh_list(self):
+        rows, err = list_running_processes()
+        self._entries = rows
+        self.table.setRowCount(len(rows))
+
+        for r, row in enumerate(rows):
+            icon_item = QTableWidgetItem("")
+            icon = self._icon_provider.icon(QFileInfo(row["path"]))
+            if not icon.isNull():
+                icon_item.setIcon(icon)
+            icon_item.setFlags(icon_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(r, 0, icon_item)
+
+            self.table.setItem(r, 1, QTableWidgetItem(row["app_name"]))
+            self.table.setItem(r, 2, QTableWidgetItem(row["process_name"]))
+            self.table.setItem(r, 3, QTableWidgetItem(str(row["pid"])))
+            self.table.setItem(r, 4, QTableWidgetItem(row["path"]))
+
+        if rows:
+            self.table.selectRow(0)
+
+        if err:
+            self.info_label.setText(self._tr("process_list_error").format(err=err))
+        else:
+            self.info_label.setText(self._tr("process_count").format(n=len(rows)))
+
+    def selected_entry(self):
+        row = self.table.currentRow()
+        if row < 0 or row >= len(self._entries):
+            return None
+        return self._entries[row]
+
+    def selected_scope(self):
+        scope = self.scope_combo.currentData()
+        if scope not in {"pid", "path"}:
+            return "path"
+        return scope
+
 class DirectionPanel(QGroupBox):
-    def __init__(self, title):
-        super().__init__(title)
+    def __init__(self, title_key):
+        super().__init__("")
         self.setObjectName("Card")
+        self._title_key = title_key
         self._build()
 
     def _build(self):
@@ -1044,13 +1461,14 @@ class DirectionPanel(QGroupBox):
         lay.setSpacing(6)
 
         top = QHBoxLayout()
-        self.enabled = QCheckBox("啟用")
+        self.enabled = QCheckBox("")
         self.mode = QComboBox()
-        self.mode.addItem("擠壓回放", "squeeze")
-        self.mode.addItem("丟包模式", "drop")
+        self.mode.addItem("", "squeeze")
+        self.mode.addItem("", "drop")
+        self.lbl_mode = QLabel("")
         top.addWidget(self.enabled)
         top.addStretch(1)
-        top.addWidget(QLabel("模式"))
+        top.addWidget(self.lbl_mode)
         top.addWidget(self.mode)
         lay.addLayout(top)
 
@@ -1072,16 +1490,26 @@ class DirectionPanel(QGroupBox):
         self.replay_loss = make_dspin(0, 100, 0.1, 2)
         self.drop_rate = make_dspin(0, 100, 0.1, 2)
 
-        left_form.addRow("隨機扣押最小", self.rand_hold_min)
-        left_form.addRow("隨機扣押最大", self.rand_hold_max)
-        left_form.addRow("抖動最小(ms)", self.jit_min)
-        left_form.addRow("抖動最大(ms)", self.jit_max)
-        left_form.addRow("回放丟包率(%)", self.replay_loss)
+        self.lbl_rand_hold_min = QLabel("")
+        self.lbl_rand_hold_max = QLabel("")
+        self.lbl_jit_min = QLabel("")
+        self.lbl_jit_max = QLabel("")
+        self.lbl_replay_loss = QLabel("")
+        self.lbl_rand_bw_min = QLabel("")
+        self.lbl_rand_bw_max = QLabel("")
+        self.lbl_bw_resample = QLabel("")
+        self.lbl_drop_rate = QLabel("")
 
-        right_form.addRow("隨機帶寬最小", self.rand_bw_min)
-        right_form.addRow("隨機帶寬最大", self.rand_bw_max)
-        right_form.addRow("重抽週期(ms)", self.bw_resample)
-        right_form.addRow("丟包模式丟包率", self.drop_rate)
+        left_form.addRow(self.lbl_rand_hold_min, self.rand_hold_min)
+        left_form.addRow(self.lbl_rand_hold_max, self.rand_hold_max)
+        left_form.addRow(self.lbl_jit_min, self.jit_min)
+        left_form.addRow(self.lbl_jit_max, self.jit_max)
+        left_form.addRow(self.lbl_replay_loss, self.replay_loss)
+
+        right_form.addRow(self.lbl_rand_bw_min, self.rand_bw_min)
+        right_form.addRow(self.lbl_rand_bw_max, self.rand_bw_max)
+        right_form.addRow(self.lbl_bw_resample, self.bw_resample)
+        right_form.addRow(self.lbl_drop_rate, self.drop_rate)
 
         cols.addLayout(left_form, 1)
         cols.addLayout(right_form, 1)
@@ -1150,22 +1578,43 @@ class DirectionPanel(QGroupBox):
         self.drop_rate.setValue(c.drop_rate_pct)
         self._on_mode_changed()
 
+    def set_language(self, tr):
+        self.setTitle(tr(self._title_key))
+        self.enabled.setText(tr("enabled"))
+        self.lbl_mode.setText(tr("mode"))
+        self.mode.setItemText(0, tr("mode_squeeze"))
+        self.mode.setItemText(1, tr("mode_drop"))
+        self.lbl_rand_hold_min.setText(tr("rand_hold_min"))
+        self.lbl_rand_hold_max.setText(tr("rand_hold_max"))
+        self.lbl_jit_min.setText(tr("jitter_min"))
+        self.lbl_jit_max.setText(tr("jitter_max"))
+        self.lbl_replay_loss.setText(tr("replay_loss"))
+        self.lbl_rand_bw_min.setText(tr("rand_bw_min"))
+        self.lbl_rand_bw_max.setText(tr("rand_bw_max"))
+        self.lbl_bw_resample.setText(tr("bw_resample"))
+        self.lbl_drop_rate.setText(tr("drop_rate"))
+
 
 class TitleBar(QFrame):
-    def __init__(self, win):
+    def __init__(self, win, on_toggle_language):
         super().__init__()
         self._win = win
+        self._on_toggle_language = on_toggle_language
         self._drag_offset = None
         self.setObjectName("TitleBar")
         l = QHBoxLayout(self)
         l.setContentsMargins(10, 6, 8, 6)
         l.setSpacing(6)
 
-        title = QLabel("RAIN-DelayBurst")
-        title.setObjectName("TitleText")
-        l.addWidget(title)
+        self.title_label = QLabel("RAIN-DelayBurst")
+        self.title_label.setObjectName("TitleText")
+        l.addWidget(self.title_label)
         l.addStretch(1)
 
+        self.btn_lang = QPushButton("")
+        self.btn_lang.setObjectName("TitleBtnLang")
+        self.btn_lang.setFixedSize(50, 24)
+        self.btn_lang.clicked.connect(self._on_toggle_language)
         self.btn_min = QPushButton("—")
         self.btn_close = QPushButton("✕")
         self.btn_min.setObjectName("TitleBtn")
@@ -1174,8 +1623,12 @@ class TitleBar(QFrame):
         self.btn_close.setFixedSize(30, 24)
         self.btn_min.clicked.connect(self._win.showMinimized)
         self.btn_close.clicked.connect(self._win.close)
+        l.addWidget(self.btn_lang)
         l.addWidget(self.btn_min)
         l.addWidget(self.btn_close)
+
+    def set_language(self, switch_button_text):
+        self.btn_lang.setText(switch_button_text)
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
@@ -1191,6 +1644,13 @@ class TitleBar(QFrame):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self._lang = "zh"
+        self._status_raw_text = "待命"
+        self._effect_active_ui = False
+        self._busy_ui = False
+        self._is_admin = is_admin()
+        self._local_cfg_error_cache = None
+
         self.setWindowTitle("RAIN-DelayBurst")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setMinimumSize(920, 680)
@@ -1201,14 +1661,18 @@ class MainWindow(QMainWindow):
         self._capture_prev = {}
         self._capture_armed_at = 0.0
         self._capture_deadline = 0.0
+        self._target_match_mode = "path"
+        self._target_pid = 0
 
         self._build_ui()
         self._build_engine()
         self._bind_signals()
 
-        cfg = AppConfig()
+        cfg = self._try_load_local_cfg()
         self.apply_cfg(cfg)
+        self.apply_language()
         self.engine.set_config(cfg)
+        self._save_local_cfg(cfg)
         self.engine.start_monitoring()
 
     def _build_ui(self):
@@ -1226,7 +1690,7 @@ class MainWindow(QMainWindow):
         root_l.setContentsMargins(0, 0, 0, 0)
         root_l.setSpacing(0)
 
-        self.titlebar = TitleBar(self)
+        self.titlebar = TitleBar(self, self.toggle_language)
         root_l.addWidget(self.titlebar)
 
         body = QFrame()
@@ -1245,29 +1709,29 @@ class MainWindow(QMainWindow):
 
         dir_row = QHBoxLayout()
         dir_row.setSpacing(10)
-        self.out_panel = DirectionPanel("上行設定")
-        self.in_panel = DirectionPanel("下行設定")
+        self.out_panel = DirectionPanel("outbound_settings")
+        self.in_panel = DirectionPanel("inbound_settings")
         dir_row.addWidget(self.out_panel, 1)
         dir_row.addWidget(self.in_panel, 1)
         body_l.addLayout(dir_row, 1)
 
-        log_box = QGroupBox("執行紀錄")
-        log_box.setObjectName("Card")
-        log_l = QVBoxLayout(log_box)
+        self.log_box = QGroupBox("")
+        self.log_box.setObjectName("Card")
+        log_l = QVBoxLayout(self.log_box)
         log_l.setContentsMargins(10, 8, 10, 10)
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setMinimumHeight(120)
         log_l.addWidget(self.log)
-        body_l.addWidget(log_box, 1)
+        body_l.addWidget(self.log_box, 1)
 
         self._apply_style()
 
     def _build_base_card(self, parent):
-        base = QGroupBox("基本設定")
-        base.setObjectName("Card")
-        parent.addWidget(base, 3)
-        g = QGridLayout(base)
+        self.base_group = QGroupBox("")
+        self.base_group.setObjectName("Card")
+        parent.addWidget(self.base_group, 4)
+        g = QGridLayout(self.base_group)
         g.setContentsMargins(10, 8, 10, 10)
         g.setHorizontalSpacing(8)
         g.setVerticalSpacing(6)
@@ -1275,37 +1739,44 @@ class MainWindow(QMainWindow):
 
         self.target_edit = QLineEdit()
         self.target_edit.setReadOnly(True)
-        self.target_edit.setPlaceholderText("選擇目標程式 .exe")
-        self.btn_pick_target = QPushButton("選擇目標")
+        self.btn_pick_process = QPushButton("")
+        self.btn_pick_process.setMinimumWidth(96)
+        self.btn_pick_process.clicked.connect(self.pick_process)
+        self.btn_pick_target = QPushButton("")
         self.btn_pick_target.setMinimumWidth(96)
         self.btn_pick_target.clicked.connect(self.pick_target)
 
         self.hotkey_label = QLabel(vk_to_name(self._trigger_vk))
         self.hotkey_label.setObjectName("ValueLabel")
-        self.btn_bind_hotkey = QPushButton("綁定熱鍵")
+        self.btn_bind_hotkey = QPushButton("")
         self.btn_bind_hotkey.setMinimumWidth(96)
         self.btn_bind_hotkey.clicked.connect(self.toggle_capture)
 
         self.trigger_mode = QComboBox()
-        self.trigger_mode.addItem("切換", "toggle")
-        self.trigger_mode.addItem("按住", "hold")
-        self.left_restore = QCheckBox("效果期間左鍵立即結束")
+        self.trigger_mode.addItem("", "toggle")
+        self.trigger_mode.addItem("", "hold")
+        self.left_restore = QCheckBox("")
 
-        g.addWidget(QLabel("目標程式"), 0, 0, 1, 3)
+        self.lbl_target_program = QLabel("")
+        self.lbl_hotkey = QLabel("")
+        self.lbl_hotkey_mode = QLabel("")
+
+        g.addWidget(self.lbl_target_program, 0, 0, 1, 3)
         g.addWidget(self.target_edit, 1, 0, 1, 3)
+        g.addWidget(self.btn_pick_process, 2, 1)
         g.addWidget(self.btn_pick_target, 2, 2)
-        g.addWidget(QLabel("觸發熱鍵"), 3, 0)
+        g.addWidget(self.lbl_hotkey, 3, 0)
         g.addWidget(self.hotkey_label, 3, 1)
         g.addWidget(self.btn_bind_hotkey, 3, 2)
-        g.addWidget(QLabel("熱鍵模式"), 4, 0)
-        g.addWidget(self.trigger_mode, 4, 1)
-        g.addWidget(self.left_restore, 4, 2)
+        g.addWidget(self.lbl_hotkey_mode, 4, 0)
+        g.addWidget(self.trigger_mode, 4, 1, 1, 2)
+        g.addWidget(self.left_restore, 5, 1, 1, 2)
 
     def _build_advanced_card(self, parent):
-        adv = QGroupBox("進階設定")
-        adv.setObjectName("Card")
-        parent.addWidget(adv, 2)
-        f = QFormLayout(adv)
+        self.adv_group = QGroupBox("")
+        self.adv_group.setObjectName("Card")
+        parent.addWidget(self.adv_group, 3)
+        f = QFormLayout(self.adv_group)
         f.setContentsMargins(10, 8, 10, 10)
         f.setHorizontalSpacing(10)
         f.setVerticalSpacing(6)
@@ -1315,65 +1786,86 @@ class MainWindow(QMainWindow):
         self.beep_dur = QSpinBox(); self.beep_dur.setRange(10, 2000)
         self.restore_beep_freq = QSpinBox(); self.restore_beep_freq.setRange(37, 32767)
         self.restore_beep_dur = QSpinBox(); self.restore_beep_dur.setRange(10, 2000)
-        f.addRow("最大過濾埠數", self.max_ports)
-        f.addRow("最大封包大小", self.max_packet)
-        f.addRow("啟用提示音頻率", self.beep_freq)
-        f.addRow("啟用提示音長度", self.beep_dur)
-        f.addRow("恢復提示音頻率", self.restore_beep_freq)
-        f.addRow("恢復提示音長度", self.restore_beep_dur)
+        self.lbl_max_ports = QLabel("")
+        self.lbl_max_packet = QLabel("")
+        self.lbl_beep_freq = QLabel("")
+        self.lbl_beep_dur = QLabel("")
+        self.lbl_restore_beep_freq = QLabel("")
+        self.lbl_restore_beep_dur = QLabel("")
+        f.addRow(self.lbl_max_ports, self.max_ports)
+        f.addRow(self.lbl_max_packet, self.max_packet)
+        f.addRow(self.lbl_beep_freq, self.beep_freq)
+        f.addRow(self.lbl_beep_dur, self.beep_dur)
+        f.addRow(self.lbl_restore_beep_freq, self.restore_beep_freq)
+        f.addRow(self.lbl_restore_beep_dur, self.restore_beep_dur)
 
     def _build_status_ops_card(self, parent):
         wrap = QVBoxLayout()
         wrap.setSpacing(10)
-        parent.addLayout(wrap, 2)
+        parent.addLayout(wrap, 3)
 
-        stat = QGroupBox("狀態")
-        stat.setObjectName("Card")
-        f = QFormLayout(stat)
+        self.status_group = QGroupBox("")
+        self.status_group.setObjectName("Card")
+        f = QFormLayout(self.status_group)
         f.setContentsMargins(10, 8, 10, 10)
         f.setHorizontalSpacing(10)
         f.setVerticalSpacing(6)
-        self.status_label = QLabel("待命")
+        self.status_label = QLabel("")
         self.status_label.setObjectName("StatusIdle")
-        self.effect_label = QLabel("否")
+        self.effect_label = QLabel("")
         self.effect_label.setObjectName("ValueLabel")
-        self.busy_label = QLabel("否")
+        self.busy_label = QLabel("")
         self.busy_label.setObjectName("ValueLabel")
-        self.admin_label = QLabel("是" if is_admin() else "否")
+        self.admin_label = QLabel("")
         self.admin_label.setObjectName("ValueLabel")
-        self.contact_label = QLabel(
-            'Discord: <a href="https://discord.gg/mdFDmCsd">discord.gg/mdFDmCsd</a> | ID: _forc4_'
-        )
+        self.contact_label = QLabel("")
         self.contact_label.setObjectName("LinkLabel")
         self.contact_label.setOpenExternalLinks(True)
-        self.contact_label.setWordWrap(True)
-        f.addRow("系統狀態", self.status_label)
-        f.addRow("效果啟用", self.effect_label)
-        f.addRow("背景忙碌", self.busy_label)
-        f.addRow("管理員模式", self.admin_label)
-        f.addRow("作者聯繫", self.contact_label)
-        wrap.addWidget(stat)
+        self.contact_label.setWordWrap(False)
+        self.contact_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.contact_label.setMinimumHeight(20)
+        self.contact_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.lbl_system_status = QLabel("")
+        self.lbl_effect = QLabel("")
+        self.lbl_busy = QLabel("")
+        self.lbl_admin = QLabel("")
+        self.lbl_contact = QLabel("")
+        self.contact_row = QWidget()
+        self.contact_row.setMinimumHeight(22)
+        contact_l = QHBoxLayout(self.contact_row)
+        contact_l.setContentsMargins(0, 0, 0, 2)
+        contact_l.setSpacing(6)
+        contact_l.addWidget(self.lbl_contact)
+        contact_l.addWidget(self.contact_label, 1)
+        f.addRow(self.lbl_system_status, self.status_label)
+        f.addRow(self.lbl_effect, self.effect_label)
+        f.addRow(self.lbl_busy, self.busy_label)
+        f.addRow(self.lbl_admin, self.admin_label)
+        f.addRow(self.contact_row)
+        wrap.addWidget(self.status_group)
 
-        ops = QGroupBox("操作")
-        ops.setObjectName("Card")
-        op_l = QHBoxLayout(ops)
+        self.ops_group = QGroupBox("")
+        self.ops_group.setObjectName("Card")
+        op_l = QGridLayout(self.ops_group)
         op_l.setContentsMargins(10, 8, 10, 10)
         op_l.setSpacing(8)
-        self.btn_toggle = QPushButton("切換效果")
-        self.btn_end = QPushButton("結束效果")
-        self.btn_save = QPushButton("保存設定")
-        self.btn_load = QPushButton("載入設定")
+        self.btn_toggle = QPushButton("")
+        self.btn_end = QPushButton("")
+        self.btn_save = QPushButton("")
+        self.btn_load = QPushButton("")
         for btn in (self.btn_toggle, self.btn_end, self.btn_save, self.btn_load):
-            btn.setMinimumWidth(92)
+            btn.setMinimumWidth(70)
         self.btn_toggle.clicked.connect(self.manual_toggle)
         self.btn_end.clicked.connect(self.manual_end)
         self.btn_save.clicked.connect(self.save_cfg)
         self.btn_load.clicked.connect(self.load_cfg)
-        op_l.addWidget(self.btn_toggle)
-        op_l.addWidget(self.btn_end)
-        op_l.addWidget(self.btn_save)
-        op_l.addWidget(self.btn_load)
-        wrap.addWidget(ops)
+        op_l.addWidget(self.btn_toggle, 0, 0)
+        op_l.addWidget(self.btn_end, 0, 1)
+        op_l.addWidget(self.btn_save, 1, 0)
+        op_l.addWidget(self.btn_load, 1, 1)
+        op_l.setColumnStretch(0, 1)
+        op_l.setColumnStretch(1, 1)
+        wrap.addWidget(self.ops_group)
 
     def _apply_style(self):
         self.setStyleSheet(
@@ -1396,13 +1888,13 @@ class MainWindow(QMainWindow):
                 color: #d9e0ca;
                 letter-spacing: 0.4px;
             }
-            QPushButton#TitleBtn, QPushButton#TitleBtnClose {
+            QPushButton#TitleBtn, QPushButton#TitleBtnClose, QPushButton#TitleBtnLang {
                 background: #1d232d;
                 border: 1px solid #313949;
                 border-radius: 6px;
                 color: #c7ced7;
             }
-            QPushButton#TitleBtn:hover { background: #273040; }
+            QPushButton#TitleBtn:hover, QPushButton#TitleBtnLang:hover { background: #273040; }
             QPushButton#TitleBtnClose:hover { background: #4a2b31; border-color: #694149; }
             QFrame#BodyFrame {
                 background: #11141a;
@@ -1452,7 +1944,7 @@ class MainWindow(QMainWindow):
             }
             QLabel#StatusIdle { color: #b7dc68; font-weight: 700; }
             QLabel#ValueLabel { color: #d4e3bd; font-weight: 700; }
-            QLabel#LinkLabel { color: #9ca6b1; font-size: 11px; }
+            QLabel#LinkLabel { color: #9ca6b1; font-size: 11px; padding-bottom: 2px; }
             QLabel#LinkLabel a { color: #b7dc68; text-decoration: none; }
             QLabel#LinkLabel a:hover { color: #d1f088; }
             QCheckBox::indicator {
@@ -1468,6 +1960,68 @@ class MainWindow(QMainWindow):
             }
             """
         )
+
+    def _t(self, key):
+        table = I18N.get(self._lang, I18N["zh"])
+        return table.get(key, I18N["zh"].get(key, key))
+
+    def _bool_text(self, value):
+        return self._t("yes") if value else self._t("no")
+
+    def _status_text_for_ui(self, raw_text):
+        status_key = STATUS_KEY_MAP.get(raw_text, None)
+        if status_key:
+            return self._t(status_key)
+        return raw_text
+
+    def apply_language(self):
+        self.base_group.setTitle(self._t("base_settings"))
+        self.lbl_target_program.setText(self._t("target_program"))
+        self.target_edit.setPlaceholderText(self._t("target_placeholder"))
+        self.btn_pick_process.setText(self._t("select_process"))
+        self.btn_pick_target.setText(self._t("select_target"))
+        self.lbl_hotkey.setText(self._t("hotkey"))
+        self.lbl_hotkey_mode.setText(self._t("hotkey_mode"))
+        self.left_restore.setText(self._t("left_click_restore"))
+        self.trigger_mode.setItemText(0, self._t("hotkey_mode_toggle"))
+        self.trigger_mode.setItemText(1, self._t("hotkey_mode_hold"))
+        self.btn_bind_hotkey.setText(self._t("capture_hotkey") if self._capture_active else self._t("bind_hotkey"))
+
+        self.adv_group.setTitle(self._t("advanced_settings"))
+        self.lbl_max_ports.setText(self._t("max_filter_ports"))
+        self.lbl_max_packet.setText(self._t("max_packet_size"))
+        self.lbl_beep_freq.setText(self._t("beep_freq"))
+        self.lbl_beep_dur.setText(self._t("beep_dur"))
+        self.lbl_restore_beep_freq.setText(self._t("restore_beep_freq"))
+        self.lbl_restore_beep_dur.setText(self._t("restore_beep_dur"))
+
+        self.status_group.setTitle(self._t("status_group"))
+        self.lbl_system_status.setText(self._t("status_label"))
+        self.lbl_effect.setText(self._t("effect_label"))
+        self.lbl_busy.setText(self._t("busy_label"))
+        self.lbl_admin.setText(self._t("admin_label"))
+        self.lbl_contact.setText(self._t("contact_label"))
+        self.contact_label.setText(self._t("contact_html"))
+        self.status_label.setText(self._status_text_for_ui(self._status_raw_text))
+        self.effect_label.setText(self._bool_text(self._effect_active_ui))
+        self.busy_label.setText(self._bool_text(self._busy_ui))
+        self.admin_label.setText(self._bool_text(self._is_admin))
+
+        self.ops_group.setTitle(self._t("ops_group"))
+        self.btn_toggle.setText(self._t("toggle_effect"))
+        self.btn_end.setText(self._t("end_effect"))
+        self.btn_save.setText(self._t("save_config"))
+        self.btn_load.setText(self._t("load_config"))
+
+        self.out_panel.set_language(self._t)
+        self.in_panel.set_language(self._t)
+        self.log_box.setTitle(self._t("log_group"))
+        self.titlebar.set_language(self._t("language_toggle_btn"))
+
+    def toggle_language(self):
+        self._lang = "en" if self._lang == "zh" else "zh"
+        self.apply_language()
+        self._save_local_cfg(self.collect_cfg())
 
     def _build_engine(self):
         self.engine = TrafficEngine(AppConfig())
@@ -1509,7 +2063,45 @@ class MainWindow(QMainWindow):
     def _sync_cfg_to_engine(self):
         if self._ui_loading:
             return
-        self.engine.set_config(self.collect_cfg())
+        cfg = self.collect_cfg()
+        self.engine.set_config(cfg)
+        self._save_local_cfg(cfg)
+
+    def _local_cfg_path(self):
+        if getattr(sys, "frozen", False):
+            base = Path(sys.executable).resolve().parent
+        else:
+            base = Path(__file__).resolve().parent
+        return base / "RAIN-DelayBurst.config.json"
+
+    def _save_local_cfg(self, cfg):
+        path = self._local_cfg_path()
+        try:
+            payload = asdict(cfg)
+            payload["ui_language"] = self._lang
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._local_cfg_error_cache = None
+        except Exception as e:
+            msg = str(e)
+            if msg != self._local_cfg_error_cache:
+                self._local_cfg_error_cache = msg
+                self._on_engine_log(self._t("log_local_cfg_save_fail").format(err=e))
+
+    def _try_load_local_cfg(self):
+        path = self._local_cfg_path()
+        if not path.exists():
+            return AppConfig()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            lang = str(data.get("ui_language", self._lang)).lower() if isinstance(data, dict) else self._lang
+            if lang in {"zh", "en"}:
+                self._lang = lang
+            cfg = AppConfig.from_dict(data)
+            self._on_engine_log(self._t("log_local_cfg_loaded").format(path=path))
+            return cfg
+        except Exception as e:
+            self._on_engine_log(self._t("log_local_cfg_load_fail").format(err=e))
+            return AppConfig()
 
     def collect_cfg(self):
         mode = self.trigger_mode.currentData()
@@ -1518,6 +2110,8 @@ class MainWindow(QMainWindow):
 
         cfg = AppConfig(
             target_exe=self.target_edit.text().strip(),
+            target_match_mode=self._target_match_mode,
+            target_pid=max(0, int(self._target_pid)),
             windivert_dll="WinDivert.dll",
             trigger_vk=int(self._trigger_vk),
             trigger_mode=mode,
@@ -1538,6 +2132,8 @@ class MainWindow(QMainWindow):
         self._ui_loading = True
         try:
             self.target_edit.setText(cfg.target_exe)
+            self._target_match_mode = cfg.target_match_mode if cfg.target_match_mode in {"path", "pid"} else "path"
+            self._target_pid = max(0, int(cfg.target_pid))
             self._trigger_vk = int(cfg.trigger_vk)
             self.hotkey_label.setText(vk_to_name(self._trigger_vk))
 
@@ -1564,19 +2160,40 @@ class MainWindow(QMainWindow):
         base_dir = str(Path(cur).parent) if cur else str(Path.cwd())
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "選擇目標程式",
+            self._t("dialog_select_target"),
             base_dir,
             "Executable (*.exe);;All Files (*.*)",
         )
         if not path:
             return
+        self._target_match_mode = "path"
+        self._target_pid = 0
         self.target_edit.setText(str(Path(path).resolve()))
         self._sync_cfg_to_engine()
-        self._on_engine_log(f"[CFG] 目標程式: {self.target_edit.text().strip()}")
+        self._on_engine_log(self._t("log_target_set").format(path=self.target_edit.text().strip()))
+
+    def pick_process(self):
+        dlg = ProcessPickerDialog(self, self._t)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        entry = dlg.selected_entry()
+        if not entry:
+            return
+        self._target_match_mode = dlg.selected_scope()
+        self._target_pid = int(entry["pid"])
+        self.target_edit.setText(entry["path"])
+        self._sync_cfg_to_engine()
+        self._on_engine_log(
+            self._t("log_target_set_from_process").format(
+                app=entry["app_name"],
+                pid=entry["pid"],
+                path=entry["path"],
+            )
+        )
 
     def toggle_capture(self):
         if self._capture_active:
-            self._cancel_capture("[CFG] 已取消熱鍵綁定")
+            self._cancel_capture(self._t("log_capture_cancel"))
             return
 
         self._capture_active = True
@@ -1584,15 +2201,15 @@ class MainWindow(QMainWindow):
         now = time.monotonic()
         self._capture_armed_at = now + 0.2
         self._capture_deadline = now + 10.0
-        self.btn_bind_hotkey.setText("請按下一個按鍵...")
+        self.btn_bind_hotkey.setText(self._t("capture_hotkey"))
         self.engine.set_hotkey_enabled(False)
         self._capture_timer.start()
-        self._on_engine_log("[CFG] 熱鍵綁定中，請按下一個按鍵")
+        self._on_engine_log(self._t("log_capture_start"))
 
     def _cancel_capture(self, log_text=None):
         self._capture_active = False
         self._capture_prev = {}
-        self.btn_bind_hotkey.setText("綁定熱鍵")
+        self.btn_bind_hotkey.setText(self._t("bind_hotkey"))
         self._capture_timer.stop()
         self.engine.set_hotkey_enabled(True)
         if log_text:
@@ -1605,7 +2222,7 @@ class MainWindow(QMainWindow):
 
         now = time.monotonic()
         if now >= self._capture_deadline:
-            self._cancel_capture("[WARN] 熱鍵綁定逾時")
+            self._cancel_capture(self._t("log_capture_timeout"))
             return
 
         if now < self._capture_armed_at:
@@ -1620,7 +2237,7 @@ class MainWindow(QMainWindow):
                 self._trigger_vk = int(vk)
                 name = vk_to_name(self._trigger_vk)
                 self.hotkey_label.setText(name)
-                self._cancel_capture(f"[CFG] 已綁定熱鍵: {name}")
+                self._cancel_capture(self._t("log_hotkey_bound").format(name=name))
                 self._sync_cfg_to_engine()
                 return
 
@@ -1634,7 +2251,7 @@ class MainWindow(QMainWindow):
         cfg = self.collect_cfg()
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "保存設定檔",
+            self._t("dialog_save_cfg"),
             str(Path.cwd() / "dc_config.json"),
             "JSON (*.json);;All Files (*.*)",
         )
@@ -1644,14 +2261,14 @@ class MainWindow(QMainWindow):
         try:
             target.write_text(json.dumps(asdict(cfg), ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as e:
-            self._on_engine_log(f"[ERROR] 保存設定失敗: {e}")
+            self._on_engine_log(self._t("log_cfg_save_fail").format(err=e))
             return
-        self._on_engine_log(f"[CFG] 設定已保存: {target}")
+        self._on_engine_log(self._t("log_cfg_saved").format(path=target))
 
     def load_cfg(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "載入設定檔",
+            self._t("dialog_load_cfg"),
             str(Path.cwd()),
             "JSON (*.json);;All Files (*.*)",
         )
@@ -1662,25 +2279,29 @@ class MainWindow(QMainWindow):
             data = json.loads(target.read_text(encoding="utf-8"))
             cfg = AppConfig.from_dict(data)
         except Exception as e:
-            self._on_engine_log(f"[ERROR] 載入設定失敗: {e}")
+            self._on_engine_log(self._t("log_cfg_load_fail").format(err=e))
             return
 
         self.apply_cfg(cfg)
         self.engine.set_config(cfg)
-        self._on_engine_log(f"[CFG] 已載入設定: {target}")
+        self._save_local_cfg(cfg)
+        self._on_engine_log(self._t("log_cfg_loaded").format(path=target))
 
     def _on_engine_log(self, text):
         stamp = time.strftime("%H:%M:%S")
         self.log.append(f"[{stamp}] {text}")
 
     def _on_status_update(self, text):
-        self.status_label.setText(text)
+        self._status_raw_text = text
+        self.status_label.setText(self._status_text_for_ui(text))
 
     def _on_effect_update(self, active):
-        self.effect_label.setText("是" if active else "否")
+        self._effect_active_ui = bool(active)
+        self.effect_label.setText(self._bool_text(self._effect_active_ui))
 
     def _on_busy_update(self, busy):
-        self.busy_label.setText("是" if busy else "否")
+        self._busy_ui = bool(busy)
+        self.busy_label.setText(self._bool_text(self._busy_ui))
 
     def _on_hotkey_update(self, name):
         self.hotkey_label.setText(name)
