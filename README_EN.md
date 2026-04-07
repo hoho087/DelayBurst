@@ -25,11 +25,12 @@ python RAIN-DelayBurst.py
 
 ## Usage
 
-1. Click `Select Target` and choose the target `.exe`
+1. For target selection, use `Select Target` (pick `.exe`) or `Select Process` (pick from running processes, then choose PID-only or same-path scope)
 2. Click `Bind Hotkey`, then press the key you want
 3. Configure outbound / inbound settings independently
 4. Use hotkey or `Toggle Effect` to start, `End Effect` to stop
-5. Use `Save Config` / `Load Config` if needed
+5. Settings are auto-saved to `RAIN-DelayBurst.config.json` in the same folder and auto-loaded on next launch
+6. You can still use `Save Config` / `Load Config` manually
 
 ## Modes
 
